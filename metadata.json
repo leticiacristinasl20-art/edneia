@@ -1,0 +1,6 @@
+{
+  "name": "Tributo Especial - Feliz Aniversário Vó Neia",
+  "description": "Biosite comemorativo de aniversário para uma mãe amada de 4 filhos, sogra exemplar e avó carinhosa, com homenagens, galeria e carrossel interativo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
