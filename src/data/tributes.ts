@@ -121,7 +121,7 @@ export const TRIBUTES: TributeMessage[] = [
 export const INITIAL_PHOTOS: PhotoMemory[] = [
   {
     id: 'photo-1',
-    url: '/src/assets/images/hero_dona_neia_real_1790294715156.jpg',
+    url: '/images/hero_dona_neia_real_1790294715156.jpg',
     title: 'Nossa Rainha Radiante',
     caption: 'Beleza, elegância e um sorriso que ilumina a vida de todos nós.',
     tag: 'Nossa Homenageada',
@@ -129,7 +129,7 @@ export const INITIAL_PHOTOS: PhotoMemory[] = [
   },
   {
     id: 'photo-2',
-    url: '/src/assets/images/birthday_cake_roses_1790293175308.jpg',
+    url: '/images/birthday_cake_roses_1790293175308.jpg',
     title: 'Comemoração dos Sonhos',
     caption: 'Mesa posta com amor, bolo especial e toda a doçura que ela merece.',
     tag: 'Festa & Brinde',
@@ -137,7 +137,7 @@ export const INITIAL_PHOTOS: PhotoMemory[] = [
   },
   {
     id: 'photo-3',
-    url: '/src/assets/images/family_travel_memories_1790293185951.jpg',
+    url: '/images/family_travel_memories_1790293185951.jpg',
     title: 'Viagens & Momentos Inesquecíveis',
     caption: 'Momentos únicos de viagem em família, risadas e novas memórias para colecionar.',
     tag: 'Viagem em Família',
@@ -145,7 +145,7 @@ export const INITIAL_PHOTOS: PhotoMemory[] = [
   },
   {
     id: 'photo-4',
-    url: '/src/assets/images/roses_celebration_bouquet_1790293194576.jpg',
+    url: '/images/roses_celebration_bouquet_1790293194576.jpg',
     title: 'Flores para a Mulher de Fé',
     caption: 'Rosas vermelhas e flores delicadas simbolizando o nosso amor eterno.',
     tag: 'Flores de Amor',

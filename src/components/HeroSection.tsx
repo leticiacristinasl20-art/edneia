@@ -8,7 +8,7 @@ interface HeroSectionProps {
   onTriggerConfetti: () => void;
 }
 
-const DEFAULT_HERO_IMAGE = '/src/assets/images/hero_dona_neia_real_1790294715156.jpg';
+const DEFAULT_HERO_IMAGE = '/images/hero_dona_neia_real_1790294715156.jpg';
 
 export const HeroSection: React.FC<HeroSectionProps> = ({
   onScrollToMessages,
