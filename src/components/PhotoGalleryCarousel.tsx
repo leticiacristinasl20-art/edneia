@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { INITIAL_PHOTOS, PhotoMemory } from '../data/tributes';
 import { processImageFile, ProcessedPhoto } from '../utils/imageOptimizer';
+import { getPhotosFromDB, savePhotosToDB, clearPhotosFromDB } from '../utils/idbStorage';
 
 interface PhotoGalleryCarouselProps {
   onTriggerConfetti: () => void;
@@ -37,6 +38,7 @@ export const PhotoGalleryCarousel: React.FC<PhotoGalleryCarouselProps> = ({ onTr
     return INITIAL_PHOTOS;
   });
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activePhoto, setActivePhoto] = useState<PhotoMemory | null>(null);
   const [viewMode, setViewMode] = useState<'polaroid' | 'bento'>('polaroid');
   const [filterType, setFilterType] = useState<'todos' | 'enviadas' | 'originais'>('todos');
@@ -53,14 +55,26 @@ export const PhotoGalleryCarousel: React.FC<PhotoGalleryCarouselProps> = ({ onTr
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const carouselRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync with localStorage safely
+  // Load reliably from IndexedDB on startup (handles large albums without quota limits)
   useEffect(() => {
-    try {
-      localStorage.setItem('voneia_custom_photos', JSON.stringify(photos));
-    } catch (err) {
-      console.warn('Storage quota limit reached for photos:', err);
+    let isMounted = true;
+    getPhotosFromDB().then((loaded) => {
+      if (isMounted && loaded && loaded.length > 0) {
+        setPhotos(loaded);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Dismiss toast message after 4 seconds
+  useEffect(() => {
+    if (toastMessage) {
+      const timer = setTimeout(() => setToastMessage(null), 4000);
+      return () => clearTimeout(timer);
     }
-  }, [photos]);
+  }, [toastMessage]);
 
   const customPhotosCount = photos.filter((p) => !p.id.startsWith('photo-1') && !p.id.startsWith('photo-2') && !p.id.startsWith('photo-3') && !p.id.startsWith('photo-4')).length;
 
@@ -136,7 +150,7 @@ export const PhotoGalleryCarousel: React.FC<PhotoGalleryCarouselProps> = ({ onTr
     setPendingPhotos((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const handleConfirmBatchUpload = () => {
+  const handleConfirmBatchUpload = async () => {
     if (pendingPhotos.length === 0) return;
 
     const newPhotoItems: PhotoMemory[] = pendingPhotos.map((p, idx) => ({
@@ -149,27 +163,36 @@ export const PhotoGalleryCarousel: React.FC<PhotoGalleryCarouselProps> = ({ onTr
     }));
 
     // Prepend new photos to gallery
-    setPhotos((prev) => [...newPhotoItems, ...prev]);
+    const updatedPhotos = [...newPhotoItems, ...photos];
+    setPhotos(updatedPhotos);
     setPendingPhotos([]);
     setShowUploadModal(false);
     setBatchDescription('');
+
+    // Persist in IndexedDB without memory limits
+    await savePhotosToDB(updatedPhotos);
+    setToastMessage(`✓ ${newPhotoItems.length} ${newPhotoItems.length === 1 ? 'foto salva' : 'fotos salvas'} com sucesso no biosite!`);
     onTriggerConfetti();
   };
 
-  const handleDeletePhoto = (id: string, e: React.MouseEvent) => {
+  const handleDeletePhoto = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('Deseja remover esta foto do biosite?')) {
-      setPhotos((prev) => prev.filter((p) => p.id !== id));
+      const updatedPhotos = photos.filter((p) => p.id !== id);
+      setPhotos(updatedPhotos);
       if (activePhoto?.id === id) {
         setActivePhoto(null);
       }
+      await savePhotosToDB(updatedPhotos);
+      setToastMessage('Foto removida do biosite.');
     }
   };
 
-  const handleResetToDefaultPhotos = () => {
+  const handleResetToDefaultPhotos = async () => {
     if (confirm('Deseja restaurar as fotos originais do biosite?')) {
       setPhotos(INITIAL_PHOTOS);
-      localStorage.removeItem('voneia_custom_photos');
+      await clearPhotosFromDB();
+      setToastMessage('Fotos originais restauradas!');
       onTriggerConfetti();
     }
   };
@@ -220,6 +243,22 @@ export const PhotoGalleryCarousel: React.FC<PhotoGalleryCarouselProps> = ({ onTr
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
         
+        {/* Toast alert banner */}
+        {toastMessage && (
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 shadow-md flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-2.5 text-xs sm:text-sm font-semibold">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              <span>{toastMessage}</span>
+            </div>
+            <button
+              onClick={() => setToastMessage(null)}
+              className="p-1 rounded-md text-emerald-600 hover:text-emerald-900 hover:bg-emerald-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
           <div>

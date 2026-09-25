@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Calendar, PartyPopper, Check, Clock, Edit2 } from 'lucide-react';
+import { Sparkles, PartyPopper, Check, Clock, Edit2, X, CalendarCheck } from 'lucide-react';
 import { celebrationAudio } from '../utils/audio';
+import { getSettingFromDB, saveSettingToDB } from '../utils/idbStorage';
 
 interface CelebrationCountdownProps {
   onTriggerConfetti: () => void;
@@ -16,24 +17,48 @@ interface TimeRemaining {
   totalSeconds: number;
 }
 
+function formatLocalDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function formatLocalTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function parseLocalDateTime(dateStr: string, timeStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hours, minutes] = (timeStr || '00:00').split(':').map(Number);
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
+}
+
 export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTriggerConfetti }) => {
-  // Target birthday date defaults to today or next celebration (saved in localStorage)
-  const [targetDateStr, setTargetDateStr] = useState<string>(() => {
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
     try {
-      const saved = localStorage.getItem('voneia_birthday_target_date');
+      const saved = localStorage.getItem('voneia_target_date_only');
       if (saved) return saved;
     } catch {
       // ignore
     }
-    // Default to current year celebration (e.g. today or next immediate family party date)
-    const now = new Date();
-    // Default to today at 23:59:59 or tomorrow
-    const defaultDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-    return defaultDate.toISOString().slice(0, 16);
+    return formatLocalDate(new Date());
+  });
+
+  const [selectedTime, setSelectedTime] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('voneia_target_time_only');
+      if (saved) return saved;
+    } catch {
+      // ignore
+    }
+    return '20:00';
   });
 
   const [isEditingDate, setIsEditingDate] = useState<boolean>(false);
-  const [customDateInput, setCustomDateInput] = useState<string>(targetDateStr);
+  const [inputDate, setInputDate] = useState<string>(selectedDate);
+  const [inputTime, setInputTime] = useState<string>(selectedTime);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<boolean>(false);
+
   const [timeRemaining, setTimeRemaining] = useState<TimeRemaining>({
     days: 0,
     hours: 0,
@@ -44,26 +69,40 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
     totalSeconds: 0,
   });
 
+  // Load from IndexedDB if localStorage was wiped or empty
+  useEffect(() => {
+    (async () => {
+      const savedDate = await getSettingFromDB('voneia_target_date_only');
+      const savedTime = await getSettingFromDB('voneia_target_time_only');
+      if (savedDate) {
+        setSelectedDate(savedDate);
+        setInputDate(savedDate);
+      }
+      if (savedTime) {
+        setSelectedTime(savedTime);
+        setInputTime(savedTime);
+      }
+    })();
+  }, []);
+
+  // Recalculate countdown every second
   useEffect(() => {
     const calculateTime = () => {
-      const now = new Date().getTime();
-      const target = new Date(targetDateStr).getTime();
-      const diff = target - now;
+      const now = new Date();
+      const target = parseLocalDateTime(selectedDate, selectedTime);
+      const diff = target.getTime() - now.getTime();
 
-      // Check if target is today (within the same calendar day)
-      const nowDate = new Date();
-      const targetDateObj = new Date(targetDateStr);
       const isSameDay =
-        nowDate.getFullYear() === targetDateObj.getFullYear() &&
-        nowDate.getMonth() === targetDateObj.getMonth() &&
-        nowDate.getDate() === targetDateObj.getDate();
+        now.getFullYear() === target.getFullYear() &&
+        now.getMonth() === target.getMonth() &&
+        now.getDate() === target.getDate();
 
       if (diff <= 0) {
-        // Event has arrived or passed today
+        // Event has arrived or is ongoing
         const elapsed = Math.abs(diff);
         const days = Math.floor(elapsed / (1000 * 60 * 60 * 24));
         const hours = Math.floor((elapsed % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        const minutes = Math.floor((elapsed % (1000 * 60 * 60)) / (1000 * 60));
+        const minutes = Math.floor((elapsed % (1000 * 60)) / (1000 * 60));
         const seconds = Math.floor((elapsed % (1000 * 60)) / 1000);
 
         setTimeRemaining({
@@ -96,26 +135,58 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
     calculateTime();
     const interval = setInterval(calculateTime, 1000);
     return () => clearInterval(interval);
-  }, [targetDateStr]);
+  }, [selectedDate, selectedTime]);
 
-  const handleSaveDate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customDateInput) return;
-    setTargetDateStr(customDateInput);
+  const handleOpenEdit = () => {
+    setInputDate(selectedDate);
+    setInputTime(selectedTime);
+    setIsEditingDate(true);
+    setSaveSuccessMessage(false);
+  };
+
+  const handleSaveDate = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!inputDate) return;
+
+    setSelectedDate(inputDate);
+    setSelectedTime(inputTime || '00:00');
+
+    // Save to localStorage
     try {
-      localStorage.setItem('voneia_birthday_target_date', customDateInput);
+      localStorage.setItem('voneia_target_date_only', inputDate);
+      localStorage.setItem('voneia_target_time_only', inputTime || '00:00');
     } catch {
       // ignore
     }
-    setIsEditingDate(false);
+
+    // Save to IndexedDB reliably
+    saveSettingToDB('voneia_target_date_only', inputDate);
+    saveSettingToDB('voneia_target_time_only', inputTime || '00:00');
+
+    setSaveSuccessMessage(true);
     onTriggerConfetti();
     celebrationAudio.playChime();
+
+    setTimeout(() => {
+      setIsEditingDate(false);
+      setSaveSuccessMessage(false);
+    }, 1200);
   };
 
-  const handleCelebrateClick = () => {
-    onTriggerConfetti();
-    celebrationAudio.playChime();
+  const setPresetToday = () => {
+    const today = formatLocalDate(new Date());
+    setInputDate(today);
+    setInputTime('20:00');
   };
+
+  const setPresetTomorrow = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    setInputDate(formatLocalDate(tomorrow));
+    setInputTime('19:00');
+  };
+
+  const targetDateObj = parseLocalDateTime(selectedDate, selectedTime);
 
   return (
     <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#FFF5F5] via-white to-[#FFEBEF] p-4 sm:p-5 border border-rose-200/90 shadow-sm transition-all duration-300 hover:shadow-md">
@@ -138,7 +209,7 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
             </span>
             <span className="text-[11px] text-slate-500 block">
               {timeRemaining.isToday
-                ? 'Celebrando o aniversário da Vó Neia a cada segundo'
+                ? `Horário marcado: ${selectedTime} · Celebrando a cada segundo`
                 : timeRemaining.hasPassed
                 ? `Em comemoração com a família há ${timeRemaining.days} dias`
                 : 'Faltam poucos instantes para a grande celebração!'}
@@ -146,17 +217,22 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
           </div>
         </div>
 
-        {/* Date configuration action */}
+        {/* Date configuration action buttons */}
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => setIsEditingDate(!isEditingDate)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-700 hover:bg-rose-100/70 transition-colors"
+            onClick={handleOpenEdit}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-rose-200 text-slate-700 hover:text-red-700 hover:bg-rose-50 text-xs font-semibold shadow-2xs transition-colors"
             title="Ajustar data ou horário do aniversário"
           >
-            <Edit2 className="w-3.5 h-3.5" />
+            <Edit2 className="w-3.5 h-3.5 text-red-600" />
+            <span>Ajustar Horário</span>
           </button>
+
           <button
-            onClick={handleCelebrateClick}
+            onClick={() => {
+              onTriggerConfetti();
+              celebrationAudio.playChime();
+            }}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-700 hover:bg-red-800 text-white text-[11px] font-semibold shadow-xs active:scale-95 transition-all"
             title="Comemorar com confetes!"
           >
@@ -166,40 +242,95 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
         </div>
       </div>
 
-      {/* Date edit form popup */}
+      {/* Date edit form popup / inline panel */}
       {isEditingDate && (
         <form
           onSubmit={handleSaveDate}
-          className="mb-4 p-3 rounded-2xl bg-white border border-rose-200 shadow-xs animate-in fade-in duration-200"
+          className="mb-4 p-4 rounded-2xl bg-white border-2 border-red-200 shadow-md animate-in fade-in duration-200"
         >
-          <div className="flex flex-col sm:flex-row items-center gap-2">
-            <div className="w-full">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+              <CalendarCheck className="w-4 h-4 text-red-600" />
+              Configurar Data e Horário do Aniversário:
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsEditingDate(false)}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-700"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <div>
               <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                Data e Horário do Aniversário / Festa:
+                Data da Comemoração:
               </label>
               <input
-                type="datetime-local"
-                value={customDateInput}
-                onChange={(e) => setCustomDateInput(e.target.value)}
-                className="w-full px-3 py-1.5 rounded-xl border border-rose-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500 bg-rose-50/40"
+                type="date"
+                required
+                value={inputDate}
+                onChange={(e) => setInputDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-rose-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500 bg-rose-50/40"
               />
             </div>
-            <div className="flex items-center gap-1.5 w-full sm:w-auto sm:self-end mt-1 sm:mt-0">
-              <button
-                type="submit"
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl bg-red-700 text-white text-xs font-medium hover:bg-red-800 transition-colors"
-              >
-                <Check className="w-3.5 h-3.5" />
-                <span>Salvar</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEditingDate(false)}
-                className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs text-slate-500 hover:bg-rose-50 transition-colors"
-              >
-                Cancelar
-              </button>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                Horário da Festa / Parabéns:
+              </label>
+              <input
+                type="time"
+                required
+                value={inputTime}
+                onChange={(e) => setInputTime(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-rose-200 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500 bg-rose-50/40"
+              />
             </div>
+          </div>
+
+          {/* Quick presets */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <span className="text-[10px] text-slate-400">Atalhos rápidos:</span>
+            <button
+              type="button"
+              onClick={setPresetToday}
+              className="px-2 py-0.5 rounded-md bg-rose-100/70 hover:bg-rose-200 text-red-900 text-[10px] font-medium transition-colors"
+            >
+              Hoje às 20h
+            </button>
+            <button
+              type="button"
+              onClick={setPresetTomorrow}
+              className="px-2 py-0.5 rounded-md bg-rose-100/70 hover:bg-rose-200 text-red-900 text-[10px] font-medium transition-colors"
+            >
+              Amanhã às 19h
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold shadow-sm transition-all"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>Salvar Data & Horário</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsEditingDate(false)}
+              className="px-3 py-2 rounded-xl text-xs text-slate-500 hover:bg-rose-50 transition-colors"
+            >
+              Cancelar
+            </button>
+
+            {saveSuccessMessage && (
+              <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1 animate-pulse">
+                <Check className="w-3.5 h-3.5" /> Salvo com sucesso!
+              </span>
+            )}
           </div>
         </form>
       )}
@@ -239,7 +370,6 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
 
         {/* Seconds */}
         <div className="bg-white/90 backdrop-blur-xs rounded-2xl p-2.5 sm:p-3 text-center border border-rose-100 shadow-xs relative overflow-hidden">
-          {/* Subtle pulse border on seconds */}
           <span className="font-display text-2xl sm:text-3xl font-extrabold text-red-600 tabular-nums block leading-tight">
             {String(timeRemaining.seconds).padStart(2, '0')}
           </span>
@@ -256,7 +386,7 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
           <Sparkles className="w-3.5 h-3.5 text-rose-500" />
           <span>
             {timeRemaining.isToday
-              ? 'Data oficial comemorada com amor e bênçãos!'
+              ? `Grande dia comemorado com muito carinho!`
               : timeRemaining.hasPassed
               ? `Celebrando este ciclo com saúde, alegria e fé!`
               : 'Prepare o coração e as homenagens!'}
@@ -264,10 +394,10 @@ export const CelebrationCountdown: React.FC<CelebrationCountdownProps> = ({ onTr
         </span>
 
         <span className="font-semibold text-rose-800">
-          {new Date(targetDateStr).toLocaleDateString('pt-BR', {
+          {targetDateObj.toLocaleDateString('pt-BR', {
             day: '2-digit',
             month: 'long',
-          })}
+          })} às {selectedTime}
         </span>
       </div>
     </div>

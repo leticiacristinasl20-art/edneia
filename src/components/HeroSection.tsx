@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Heart, Sparkles, ChevronDown, Calendar, ShieldCheck, Camera, RefreshCw } from 'lucide-react';
 import { CELEBRATION_STATS } from '../data/tributes';
 import { CelebrationCountdown } from './CelebrationCountdown';
+import { getSettingFromDB, saveSettingToDB } from '../utils/idbStorage';
+import { processImageFile } from '../utils/imageOptimizer';
 
 interface HeroSectionProps {
   onScrollToMessages: () => void;
@@ -34,28 +36,41 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleHeroPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Load from IndexedDB on startup
+  useEffect(() => {
+    (async () => {
+      const savedHero = await getSettingFromDB('voneia_hero_photo_custom');
+      if (savedHero) {
+        setHeroImage(savedHero);
+        setIsCustom(true);
+      }
+    })();
+  }, []);
+
+  const handleHeroPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          const dataUrl = event.target.result as string;
-          setHeroImage(dataUrl);
-          setIsCustom(true);
-          try {
-            localStorage.setItem('voneia_hero_photo_custom', dataUrl);
-          } catch {
-            // ignore
-          }
-          onTriggerConfetti();
+      try {
+        const processed = await processImageFile(file, 'Nossa Homenageada');
+        setHeroImage(processed.url);
+        setIsCustom(true);
+
+        try {
+          localStorage.setItem('voneia_hero_photo_custom', processed.url);
+        } catch {
+          // ignore if quota exceeded
         }
-      };
-      reader.readAsDataURL(file);
+
+        // Persist reliably in IndexedDB
+        await saveSettingToDB('voneia_hero_photo_custom', processed.url);
+        onTriggerConfetti();
+      } catch (err) {
+        console.error('Failed to process hero photo:', err);
+      }
     }
   };
 
-  const handleResetHeroPhoto = () => {
+  const handleResetHeroPhoto = async () => {
     setHeroImage(DEFAULT_HERO_IMAGE);
     setIsCustom(false);
     try {
@@ -63,6 +78,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
     } catch {
       // ignore
     }
+    await saveSettingToDB('voneia_hero_photo_custom', '');
     onTriggerConfetti();
   };
 

@@ -18,8 +18,8 @@ export async function processImageFile(file: File, defaultTag: string = 'Famíli
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
-        // Max dimension 1400px (crystal clear on Retina/high-res screens, ~150-250KB JPEG)
-        const maxDimension = 1400;
+        // Max dimension 1200px (crystal clear on Retina/high-res screens, ~90-140KB JPEG)
+        const maxDimension = 1200;
         let { width, height } = img;
 
         if (width > height) {
@@ -59,7 +59,7 @@ export async function processImageFile(file: File, defaultTag: string = 'Famíli
         ctx.drawImage(img, 0, 0, width, height);
 
         // Convert to high-quality JPEG
-        const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.86);
+        const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
 
         resolve({
           id: `photo-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
